@@ -168,8 +168,47 @@ def edit_image_tool(image_path: str, instruction: str) -> str:
         print(f"调用编辑模型报错:{e}")
         return json.dumps({"success": False, "error": f"{e}"}, ensure_ascii=False)
 
+@tool
+def merge_image_tool(image_path1: str, image_path2: str, instruction: str) -> str:
+    """合并两张图片"
+    输入两张本地图片地址路径与合并指令，调用Dashscope的图像编辑模型生成新的URL
+    返回JSON字符串: {"success": true, "url":"..."} 或 {"success": false, "error":"..."}
+    """
+    try:
+        with open(image_path1, "rb") as f:
+            image_data1 = f.read()
+        with open(image_path2, "rb") as f:
+            image_data2 = f.read()
+
+        image_data_uri1 = process_image(image_data1)
+        image_data_uri2 = process_image(image_data2)
+
+        # 多图输入：把两张图都放进同一个 user content 里
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"image": image_data_uri1},
+                    {"image": image_data_uri2},
+                    {"text": instruction},
+                ],
+            }
+        ]
+
+        params = {
+            "model": "qwen-image-edit-plus",
+            "messages": messages,
+        }
+
+        response = MultiModalConversation.call(**params)
+        url = response["output"]["choices"][0]["message"]["content"][0]["image"]
+        return json.dumps({"success": True, "url": url}, ensure_ascii=False)
+    except Exception as e:
+        print(f"调用合并模型报错:{e}")
+        return json.dumps({"success": False, "error": f"{e}"}, ensure_ascii=False)
+
 # 声明一下工具: 编辑图片与合并图片
-skills_tools = [edit_image_tool]
+skills_tools = [edit_image_tool, merge_image_tool]
 
 # 创建agent
 try:
@@ -227,14 +266,38 @@ def skill_image() -> str:
             f"instruction: {instruction}"
         ]
 
-        data = request.files["file"].read()
-        p = os.path.join(tmp_dir, f"aiwear_{uuid.uuid4().hex}.bin")
-        with open(p, "wb") as f:
-            f.write(data)
-        tmp_paths.append(p)
-        prompt_lines.append(f"image_path: {p}")
+        # data = request.files["file"].read()
+        # p = os.path.join(tmp_dir, f"aiwear_{uuid.uuid4().hex}.bin")
+        # with open(p, "wb") as f:
+        #     f.write(data)
+        # tmp_paths.append(p)
+        # prompt_lines.append(f"image_path: {p}")
+        # out = invoke_agent("\n".join(prompt_lines))
+        # return out["url"]
+
+        # 兼容旧接口：单图编辑仍然使用 file 字段
+        # 新增能力：如果传 file1 + file2，则走合并路径
+        if "file1" in request.files and "file2" in request.files:
+            data1 = request.files["file1"].read()
+            data2 = request.files["file2"].read()
+            p1 = os.path.join(tmp_dir, f"aiwear_{uuid.uuid4().hex}_1.bin")
+            p2 = os.path.join(tmp_dir, f"aiwear_{uuid.uuid4().hex}_2.bin")
+            with open(p1, "wb") as f:
+                f.write(data1)
+            with open(p2, "wb") as f:
+                f.write(data2)
+            tmp_paths.extend([p1, p2])
+            prompt_lines.append(f"image_path1: {p1}")
+            prompt_lines.append(f"image_path2: {p2}")
+        else:
+            data = request.files["file"].read()
+            p = os.path.join(tmp_dir, f"aiwear_{uuid.uuid4().hex}.bin")
+            with open(p, "wb") as f:
+                f.write(data)
+            tmp_paths.append(p)
+            prompt_lines.append(f"image_path: {p}")
         out = invoke_agent("\n".join(prompt_lines))
-        return out["url"]
+        return out.get("url", "")
     except Exception as e:
         print(f"执行skill异常{e}")
         return ""
