@@ -219,6 +219,7 @@ try:
         system_prompt=(
             "你是一个智能图片处理助手，你可以调用一个工具：\n"
             "- edit_image_tool：编辑单张图片 \n"
+            "- merge_image_tool：合并两张图片 \n"
             "最终的输出格式JSON: {\"success\":true, \"url\":\"字符串类型\"} 或者 {\"success\":false, \"error\":\"字符串类型\"} "
         )
     )
