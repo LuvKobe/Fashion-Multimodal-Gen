@@ -3,10 +3,12 @@ package com.edison.controller;
 import com.edison.common.Result;
 import com.edison.dto.request.SendVerificationCodeRequest;
 import com.edison.dto.response.SendVerificationCodeResponse;
+import com.edison.log.ApiLog;
 import com.edison.service.UserService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.bind.annotation.*;
 
 // 用户模块的控制器
@@ -18,7 +20,11 @@ public class UserController {
     @Autowired
     private UserService userService;
 
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
     // 发送邮箱验证码
+    @ApiLog
     @PostMapping("/send-code")
     public Result<SendVerificationCodeResponse> sendVerificationCode(@RequestBody @Valid SendVerificationCodeRequest request)
     {
@@ -28,5 +34,11 @@ public class UserController {
         } else {
             return Result.serverError("验证码发送失败，请稍后重试");
         }
+    }
+
+    @GetMapping("/test-redis")
+    public String testRedis() {
+        redisTemplate.opsForValue().set("test", "ok");
+        return redisTemplate.opsForValue().get("test");
     }
 }
