@@ -1,6 +1,7 @@
 package com.edison.util;
 
 import com.edison.entity.User;
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
@@ -65,5 +66,44 @@ public class JwtUtil {
                         TimeUnit.HOURS
                 );
         return token;
+    }
+
+    // 先来获取token
+    public String parseToken(String authorization) {
+        if (authorization == null || authorization.isBlank()) {
+            throw new RuntimeException("缺少请求头令牌！");
+        }
+        return authorization.substring(7);
+    }
+
+    // 从token中解析userId
+    private Claims getClaims(String token) {
+        SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+        return Jwts.parserBuilder()
+                .setSigningKey(key)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+    }
+
+    // 根据token获取userId
+    public Long getUserId(String token) {
+        Claims claims = getClaims(token);
+        Long userId = Long.valueOf(claims.get("userId").toString());
+        return userId;
+    }
+
+    // 删除令牌
+    public boolean removeToken(String token) {
+        if (token == null || token.isBlank()) {
+            return true;
+        }
+        Claims claims = getClaims(token);
+        Long userId = Long.valueOf(claims.get("userId").toString());
+        String tokenKey = USER_TOKEN_KEY_PREFIX + userId;
+        if (redisTemplate.hasKey(tokenKey)) {
+            return redisTemplate.delete(tokenKey);
+        }
+        return false;
     }
 }

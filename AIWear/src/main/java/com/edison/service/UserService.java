@@ -13,4 +13,7 @@ public interface UserService {
 
     // 认证注册/登录
     AuthResponse auth(@Valid AuthRequest request);
+
+    // 用户登出系统
+    boolean logut(String authorization);
 }

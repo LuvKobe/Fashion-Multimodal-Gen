@@ -49,6 +49,7 @@ public class UserServiceImpl implements UserService {
         return emailService.sendVerificationCode(email, code);
     }
 
+    // 认证注册/登录的方法
     @Override
     @Transactional(rollbackFor = Exception.class)
     public AuthResponse auth(AuthRequest request) {
@@ -96,6 +97,13 @@ public class UserServiceImpl implements UserService {
             }
         }
         return createResponse(user);
+    }
+
+    // 登出的方法
+    @Override
+    public boolean logut(String authorization) {
+        String token = jwtUtil.parseToken(authorization);
+        return jwtUtil.removeToken(token);
     }
 
     // 返回认证的响应
