@@ -47,12 +47,10 @@ public class VerificationCodeService {
         if (redisTemplate.hasKey(key)) {
             String oldCode = redisTemplate.opsForValue().get(key);
             redisTemplate.delete(key);
-            return  code.equals(oldCode);
+            return code.equals(oldCode);
         } else {
-            log.warn("验证码不存在或已过期， 邮箱{}", email);
+            log.warn("验证码不存在或已过期，邮箱{}", email);
             return false;
         }
     }
-
-
 }

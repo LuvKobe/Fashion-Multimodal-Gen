@@ -57,6 +57,11 @@ mybatis-plus:
     db-config:
       id-type: auto # 主键自增
 
+# 配置secret
+jwt:
+  secret: abcdefghijklmnopqrstuvwxyz123456
+  expiration: 2 # 过期时间2h
+
 # 自定义日志配置
 logging:
   pattern:

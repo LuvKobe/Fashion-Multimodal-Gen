@@ -1,7 +1,9 @@
 package com.edison.controller;
 
 import com.edison.common.Result;
+import com.edison.dto.request.AuthRequest;
 import com.edison.dto.request.SendVerificationCodeRequest;
+import com.edison.dto.response.AuthResponse;
 import com.edison.dto.response.SendVerificationCodeResponse;
 import com.edison.log.ApiLog;
 import com.edison.service.UserService;
@@ -36,9 +38,17 @@ public class UserController {
         }
     }
 
+    // 测试redis接口
     @GetMapping("/test-redis")
     public String testRedis() {
         redisTemplate.opsForValue().set("test", "ok");
         return redisTemplate.opsForValue().get("test");
+    }
+
+    // 统一认证接口
+    @ApiLog
+    @PostMapping("/auth")
+    public Result<AuthResponse> auth(@RequestBody @Valid AuthRequest request) {
+        return Result.success("操作成功", userService.auth(request));
     }
 }
