@@ -62,6 +62,15 @@ jwt:
   secret: abcdefghijklmnopqrstuvwxyz123456
   expiration: 2 # 过期时间2h
 
+# 配置oss
+aliyun:
+  oss:
+    endpoint: oss-cn-beijing.aliyuncs.com
+    #access-key-id: ${ALIYUN_ACCESS_KEY_ID}
+    #access-key-secret: ${ALIYUN_ACCESS_KEY_SECRET}
+    bucket-name: edison-ai-wear
+    max-size: 52428800
+
 # 自定义日志配置
 logging:
   pattern:
