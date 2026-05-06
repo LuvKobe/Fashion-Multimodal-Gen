@@ -3,8 +3,13 @@ import json
 import os
 import tempfile
 import uuid
+import threading
+import redis
+import requests
 
 from PIL import Image
+import torch
+from transformers import CLIPModel, CLIPProcessor
 from dashscope import MultiModalConversation
 from deepagents import create_deep_agent
 from dotenv import load_dotenv
@@ -24,6 +29,45 @@ app = Flask(__name__)
 load_dotenv()
 
 API_KEY = os.getenv("DASHSCOPE_API_KEY")
+
+# Redis 配置（按你给的配置）
+REDIS_HOST = "8.156.77.78"
+REDIS_PORT = 6379
+REDIS_DB = 0
+REDIS_TIMEOUT_SECS = 2
+
+_redis_client = redis.Redis(
+    host=REDIS_HOST,
+    port=REDIS_PORT,
+    db=REDIS_DB,
+    socket_timeout=REDIS_TIMEOUT_SECS,
+    socket_connect_timeout=REDIS_TIMEOUT_SECS,
+    decode_responses=True,
+)
+
+# 模型存储的位置
+CLIP_MODEL_DIR = r"C:\Users\20399\.cache\modelscope\hub\models\openai-mirror\clip-vit-base-patch16"
+_clip_model = None
+_clip_processor = None
+_clip_lock = threading.Lock()
+
+def get_clip_model_and_processor():
+    """
+    延迟加载本地 CLIP 模型，避免每次请求重复加载。
+    该模型的 image embedding 维度通常为 512。
+    """
+    global _clip_model, _clip_processor
+    if _clip_model is not None and _clip_processor is not None:
+        return _clip_model, _clip_processor
+
+    # 简单单例锁，确保并发下只加载一次
+    with _clip_lock:
+        if _clip_model is None or _clip_processor is None:
+            _clip_processor = CLIPProcessor.from_pretrained(CLIP_MODEL_DIR)
+            _clip_model = CLIPModel.from_pretrained(CLIP_MODEL_DIR)
+            _clip_model.eval()
+
+    return _clip_model, _clip_processor
 
 # 将图片bytes转换成base_uri
 def process_image(image_data : bytes) -> str:
@@ -105,6 +149,37 @@ def validate_image(image_desc : str) -> bool:
         print(f"做图片内容判定的时候出现异常:{e}")
         return False
 
+def clip_image_to_512d(image_data: bytes) -> list:
+    """
+    把上传图片转成 CLIP 512 维向量（float 列表）。
+
+    归一化后的向量更适合做余弦相似度检索。
+    """
+    model, processor = get_clip_model_and_processor()
+
+    img = Image.open(BytesIO(image_data)).convert("RGB")
+    inputs = processor(images=img, return_tensors="pt")
+
+    with torch.no_grad():
+        # 当前 transformers 版本下，get_image_features 返回 BaseModelOutputWithPooling
+        # 其中向量通常在 pooler_output 字段里。
+        out = model.get_image_features(**inputs)
+        if hasattr(out, "pooler_output") and out.pooler_output is not None:
+            image_features = out.pooler_output
+        elif hasattr(out, "image_embeds") and out.image_embeds is not None:
+            image_features = out.image_embeds
+        else:
+            image_features = out
+        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+
+    vec = image_features[0].detach().cpu().tolist()
+    if len(vec) != 512:
+        raise ValueError(f"CLIP embedding 维度期望为 512，实际为 {len(vec)}")
+
+    # 降低 Redis 里 JSON 体积，检索时精度通常足够
+    vec = [round(float(x), 6) for x in vec]
+    return vec
+
 # 定义审核图片的接口路由
 @app.route("/api/validate-image", methods = ['POST'])
 def validate_image_api():
@@ -117,6 +192,128 @@ def validate_image_api():
     except Exception as e:
         print(f"执行审核图片操作捕获异常:{e}")
         return jsonify({"code":500, "allow":False}), 500
+
+def _get_field_from_request(name: str, default=None):
+    """兼容 JSON body 与 form body 的字段读取。"""
+    # JSON body（不强依赖 Content-Type，避免前端没设置导致读取失败）
+    body = request.get_json(silent=True) or {}
+    if name in body:
+        return body.get(name, default)
+
+    # form-data / x-www-form-urlencoded
+    if name in request.form:
+        return request.form.get(name, default)
+
+    # query string
+    if name in request.args:
+        return request.args.get(name, default)
+
+    return default
+
+# 获取ID
+def _extract_user_id():
+    user_id = _get_field_from_request("userId")
+    if user_id is None:
+        user_id = _get_field_from_request("user_id")
+    if user_id is None:
+        raise ValueError("userId 不能为空")
+
+    # 允许前端传字符串数字
+    try:
+        return int(user_id)
+    except Exception:
+        return str(user_id)
+
+# 获取url
+def _extract_oss_url():
+    for key in [
+        "ossUrl",
+        "oss_url",
+        "oss_address",
+        "ossAddress",
+        "imageOssUrl",
+        "image_oss_url",
+    ]:
+        v = _get_field_from_request(key)
+        if v:
+            return v
+
+    # 兜底：有些前端把字段叫 url
+    v = _get_field_from_request("url")
+    return v
+
+@app.route("/api/upload-image", methods=["POST"])
+def upload_image_api():
+    """
+    接收参数:
+    - ossUrl / oss_address: 图片 OSS 地址（已可访问的 http(s) URL）
+    - userId: 用户 ID
+
+    处理流程:
+    1) 下载 OSS 图片 -> bytes
+    2) 调用 qwen-vl-max 生成图片描述
+    3) 调用本地 CLIP 生成 512 维向量
+    4) 把 {userId, description, embedding} 写入 Redis（JSON 格式）
+    """
+    try:
+        user_id = _extract_user_id()
+        oss_url = _extract_oss_url()
+        if not oss_url:
+            return jsonify({"success": False, "error": "ossUrl/oss_address 不能为空"}), 400
+
+        # 下载图片（OSS 通常是可直接 GET 的公开/内网 URL）
+        resp = requests.get(oss_url, timeout=20)
+        if resp.status_code != 200:
+            return (
+                jsonify(
+                    {
+                        "success": False,
+                        "error": f"下载图片失败，status={resp.status_code}",
+                    }
+                ),
+                400,
+            )
+
+        image_data = resp.content
+        if not image_data:
+            return jsonify({"success": False, "error": "下载到的图片为空"}), 400
+
+        # 1) qwen-vl-max: 描述
+        description = describe_image(image_data)
+        if not description:
+            return jsonify({"success": False, "error": "生成图片描述失败"}), 500
+
+        # 2) CLIP: 向量（512维）
+        embedding = clip_image_to_512d(image_data)
+
+        # 3) 写入 Redis
+        image_id = uuid.uuid4().hex
+        payload = {
+            "userId": user_id,
+            "imageId": image_id,
+            "ossUrl": oss_url,
+            "description": description,
+            "embedding512": embedding,
+        }
+        redis_key = f"clip:image:{image_id}"
+        _redis_client.set(redis_key, json.dumps(payload, ensure_ascii=False))
+        # 同时维护 user 的索引集合，后续你按 userId 扫描会更快（避免 keys * 全库扫描）
+        _redis_client.sadd(f"clip:user:{user_id}:image_ids", image_id)
+
+        return (
+            jsonify(
+                {
+                    "success": True,
+                    "imageId": image_id,
+                    "description": description,
+                    "embeddingDim": 512,
+                }
+            ),
+            200,
+        )
+    except Exception as e:
+        print(f"/api/upload-image 执行失败: {e}")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # 全局的agent智能体
 deep_agent = None
