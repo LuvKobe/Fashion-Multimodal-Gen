@@ -8,13 +8,22 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.http.HttpHeaders;
+import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.util.MultiValueMap;
+import org.springframework.web.client.RestTemplate;
 
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 
 @Slf4j
@@ -91,6 +100,24 @@ public class PythonImageServiceImpl implements PythonImageService {
         } catch (Exception e) {
             log.error("解析 Python 响应失败：{}", e.getMessage());
             throw new RuntimeException("解析 Python 响应失败");
+        }
+    }
+
+    @Override
+    public boolean validateImage(Path filePath) {
+        try {
+            String url = pythonBaseUrl + "/api/validate-image";
+            HttpHeaders httpHeaders = new HttpHeaders();
+            httpHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("file", new FileSystemResource(filePath));
+            HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, httpHeaders);
+            RestTemplate restTemplate = new RestTemplate();
+            ResponseEntity<String> response = restTemplate.postForEntity(url, requestEntity, String.class);
+            return objectMapper.readTree(response.getBody()).path("allow").asBoolean(false);
+        } catch (Exception e) {
+            return false;
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.edison.service.impl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.edison.dto.response.UploadImageResponse;
 import com.edison.entity.ImageFile;
 import com.edison.mapper.ImageFileMapper;
@@ -18,6 +19,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -84,9 +86,9 @@ public class FileServiceImpl implements FileService {
         try {
             // 1) 上传到系统（本地存储）
             file.transferTo(localFilePath);
-//            if (!pythonImageService.validateImage(localFilePath)) {
-//                throw new RuntimeException("图片审核不通过！");
-//            }
+            if (!pythonImageService.validateImage(localFilePath)) {
+                throw new RuntimeException("图片审核不通过！");
+            }
             // 2) 同步到OSS
             String objectKey = "images/" + finalLocalFileName;
             File localFile = localFilePath.toFile();
@@ -121,6 +123,15 @@ public class FileServiceImpl implements FileService {
             } catch (Exception ignore) {
             }
         }
+    }
+
+    @Override
+    public List<ImageFile> myImages(String authorization) {
+        String token = jwtUtil.parseToken(authorization);
+        Long userId = jwtUtil.getUserId(token);
+        LambdaQueryWrapper<ImageFile> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.eq(ImageFile::getUserId, userId).orderByDesc(ImageFile::getId);
+        return imageFileMapper.selectList(queryWrapper);
     }
 
     private String getFileExtension(String originalFileName, String contentType) {
