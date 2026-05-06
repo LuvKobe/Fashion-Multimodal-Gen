@@ -66,8 +66,8 @@ jwt:
 aliyun:
   oss:
     endpoint: oss-cn-beijing.aliyuncs.com
-    #access-key-id: ${ALIYUN_ACCESS_KEY_ID}
-    #access-key-secret: ${ALIYUN_ACCESS_KEY_SECRET}
+    #access-key-id:
+    #access-key-secret:
     bucket-name: edison-ai-wear
     max-size: 52428800
 

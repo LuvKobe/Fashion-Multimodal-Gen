@@ -4,6 +4,7 @@ import com.edison.dto.response.UploadImageResponse;
 import com.edison.entity.ImageFile;
 import com.edison.mapper.ImageFileMapper;
 import com.edison.service.FileService;
+import com.edison.service.PythonImageService;
 import com.edison.util.JwtUtil;
 import com.edison.util.OssService;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,9 @@ public class FileServiceImpl implements FileService {
 
     @Autowired
     private OssService ossService;
+
+    @Autowired
+    private PythonImageService pythonImageService;
 
     @Value("${file.upload.dir:uploads}")
     private String uploadBaseDir;
@@ -89,7 +93,7 @@ public class FileServiceImpl implements FileService {
             String url = ossService.upload(objectKey, localFile, file.getContentType());
 
             // 2.5) 上传到 Python（用于后续搜索向量化）
-            //pythonImageService.uploadImage(userId, url);
+            pythonImageService.uploadImage(userId, url);
 
             // 3) 落库
             ImageFile record = new ImageFile();
