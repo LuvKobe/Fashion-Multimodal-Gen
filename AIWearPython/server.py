@@ -9,7 +9,6 @@ import requests
 
 from PIL import Image
 import torch
-from transformers import CLIPModel, CLIPProcessor
 from dashscope import MultiModalConversation
 from deepagents import create_deep_agent
 from dotenv import load_dotenv
@@ -18,9 +17,9 @@ from io import BytesIO
 
 from langchain_community.chat_models import ChatTongyi
 from langchain_core.messages import HumanMessage
-from langchain_core.messages.tool import tool_call
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.tools import tool
+from transformers import CLIPModel, CLIPProcessor
 
 # 创建Flask应用实例
 app = Flask(__name__)
@@ -46,7 +45,7 @@ _redis_client = redis.Redis(
 )
 
 # 模型存储的位置
-CLIP_MODEL_DIR = r"C:\Users\20399\.cache\modelscope\hub\models\openai-mirror\clip-vit-base-patch16"
+CLIP_MODEL_DIR = r"/root/clip-vit-base-patch16"
 _clip_model = None
 _clip_processor = None
 _clip_lock = threading.Lock()
