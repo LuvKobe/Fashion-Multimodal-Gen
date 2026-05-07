@@ -1,6 +1,8 @@
 import base64
+import difflib
 import json
 import os
+import re
 import tempfile
 import uuid
 import threading
@@ -179,6 +181,65 @@ def clip_image_to_512d(image_data: bytes) -> list:
     vec = [round(float(x), 6) for x in vec]
     return vec
 
+def cosine_similarity_512(a: list, b: list) -> float:
+    """
+    计算两个 512 维向量的余弦相似度。
+    约定：向量已经做过 L2 归一化时，余弦相似度可近似为点积。
+    """
+    if a is None or b is None:
+        return 0.0
+    if len(a) != 512 or len(b) != 512:
+        return 0.0
+    try:
+        s = 0.0
+        for i in range(512):
+            s += float(a[i]) * float(b[i])
+        return float(s)
+    except Exception:
+        return 0.0
+
+def _normalize_text_for_similarity(s: str) -> str:
+    if s is None:
+        return ""
+    s = str(s).strip().lower()
+    if not s:
+        return ""
+    # 把各种空白压缩成单空格；移除大多数标点符号（保留中英文数字与空白）
+    s = re.sub(r"\s+", " ", s)
+    s = re.sub(r"[^\w\u4e00-\u9fff\s]", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+def _char_ngrams(s: str, n: int = 2) -> set:
+    if not s:
+        return set()
+    if len(s) <= n:
+        return {s}
+    return {s[i : i + n] for i in range(0, len(s) - n + 1)}
+
+def text_similarity(query: str, description: str) -> float:
+    """
+    文本相似度（不使用向量/模型）：
+    - 使用 difflib 的序列相似度（对中英文都能工作）
+    - 叠加 2-gram 字符集合的 Jaccard，相对更适合中文短句/关键词
+    返回 [0,1]，越大越相似。
+    """
+    q = _normalize_text_for_similarity(query)
+    d = _normalize_text_for_similarity(description)
+    if not q or not d:
+        return 0.0
+
+    seq = difflib.SequenceMatcher(None, q, d).ratio()
+    q2 = _char_ngrams(q, 2)
+    d2 = _char_ngrams(d, 2)
+    if not q2 or not d2:
+        jac = 0.0
+    else:
+        jac = len(q2 & d2) / max(1, len(q2 | d2))
+
+    # 取更“乐观”的相似度，以满足关键词命中场景
+    return float(max(seq, jac))
+
 # 定义审核图片的接口路由
 @app.route("/api/validate-image", methods = ['POST'])
 def validate_image_api():
@@ -313,6 +374,96 @@ def upload_image_api():
     except Exception as e:
         print(f"/api/upload-image 执行失败: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
+
+@app.route("/api/search-image", methods=["POST"])
+def search_image_api():
+    """
+    POST /api/search-image
+
+    multipart/form-data:
+    - userId: 必填
+    - file: 可选（图搜图）
+    - query: 可选（文搜图）
+
+    逻辑：
+    1) 读取 Redis: clip:user:{userId}:image_ids
+    2) 再读取每个 clip:image:{imageId} 的缓存（包含 description, embedding512, ossUrl）
+    3) 文搜图：query 与 description 做相似度，>0.5 按相似度倒序
+    4) 图搜图：file 抽取 CLIP 向量，与 embedding512 做余弦相似度，>0.7 按相似度倒序
+    """
+    try:
+        user_id = _extract_user_id()
+        query = _get_field_from_request("query")
+        file_storage = request.files.get("file")
+
+        is_image_search = file_storage is not None and getattr(file_storage, "filename", "") != ""
+        is_text_search = query is not None and str(query).strip() != ""
+
+        if not is_image_search and not is_text_search:
+            return jsonify({"code": 400, "message": "file 或 query 至少需要一个", "data": []}), 400
+
+        # 1) 读取用户图片ID集合
+        user_key = f"clip:user:{user_id}:image_ids"
+        image_ids = list(_redis_client.smembers(user_key) or [])
+        if not image_ids:
+            return jsonify({"code": 200, "message": "查询成功", "data": []}), 200
+
+        # 2) 拉取缓存内容
+        items = []
+        for image_id in image_ids:
+            try:
+                raw = _redis_client.get(f"clip:image:{image_id}")
+                if not raw:
+                    continue
+                obj = json.loads(raw)
+                items.append(obj)
+            except Exception:
+                continue
+
+        if not items:
+            return jsonify({"code": 200, "message": "查询成功", "data": []}), 200
+
+        results = []
+
+        if is_image_search:
+            image_data = file_storage.read()
+            if not image_data:
+                return jsonify({"code": 400, "message": "上传图片为空", "data": []}), 400
+
+            query_vec = clip_image_to_512d(image_data)
+            for obj in items:
+                emb = obj.get("embedding512")
+                if not isinstance(emb, list) or len(emb) != 512:
+                    continue
+                sim = cosine_similarity_512(query_vec, emb)
+                if sim >= 0.7:
+                    results.append(
+                        {
+                            "filePath": obj.get("ossUrl") or obj.get("filePath") or "",
+                            "similarity": round(float(sim), 4),
+                        }
+                    )
+
+        else:
+            for obj in items:
+                desc = obj.get("description")
+                if not desc:
+                    continue
+                sim = text_similarity(str(query), str(desc))
+                print(sim)
+                if sim >= 0.1:
+                    results.append(
+                        {
+                            "filePath": obj.get("ossUrl") or obj.get("filePath") or "",
+                            "similarity": round(float(sim), 4),
+                        }
+                    )
+
+        results.sort(key=lambda x: x.get("similarity", 0.0), reverse=True)
+        return jsonify({"code": 200, "message": "查询成功", "data": results}), 200
+    except Exception as e:
+        print(f"/api/search-image 执行失败: {e}")
+        return jsonify({"code": 500, "message": "查询失败", "data": []}), 500
 
 # 全局的agent智能体
 deep_agent = None
