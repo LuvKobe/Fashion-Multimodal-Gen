@@ -1,8 +1,10 @@
 package com.edison.service;
 
 import com.edison.dto.request.EditImageRequest;
+import com.edison.dto.request.MergeImageRequest;
 import com.edison.dto.request.SearchImageRequest;
 import com.edison.dto.response.EditImageResponse;
+import com.edison.dto.response.MergeImageResponse;
 import com.edison.dto.response.SearchImageResponse;
 import com.edison.dto.response.UploadImageResponse;
 import com.edison.entity.ImageFile;
@@ -24,4 +26,7 @@ public interface FileService {
 
     // 编辑用户上传的图片
     EditImageResponse edit(String authorization, EditImageRequest editImageRequest);
+
+    // 合并用户上传的图片
+    MergeImageResponse merge(String authorization, MergeImageRequest mergeImageRequest);
 }

@@ -2,8 +2,10 @@ package com.edison.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.edison.dto.request.EditImageRequest;
+import com.edison.dto.request.MergeImageRequest;
 import com.edison.dto.request.SearchImageRequest;
 import com.edison.dto.response.EditImageResponse;
+import com.edison.dto.response.MergeImageResponse;
 import com.edison.dto.response.SearchImageResponse;
 import com.edison.dto.response.UploadImageResponse;
 import com.edison.entity.ImageFile;
@@ -171,6 +173,23 @@ public class FileServiceImpl implements FileService {
         //Long userId = jwtUtil.getUserId(jwtUtil.parseToken(authorization));
         //recordService.editSave(userId, editImageRequest, editImageResponse);
         return editImageResponse;
+    }
+
+    @Override
+    public MergeImageResponse merge(String authorization, MergeImageRequest mergeImageRequest) {
+        // 1. 鉴权 -> 用户只能合并自己上传的图片
+        List<ImageFile> imageFiles = myImages(authorization);
+        // 2. 判断上传的图片是否包含在imageFiles的ossUrl字段集合中
+        List<String> urls = imageFiles.stream().map(ImageFile::getOssUrl).toList();
+        if (!urls.contains(mergeImageRequest.getImage1()) || !urls.contains(mergeImageRequest.getImage2())) {
+            throw new RuntimeException("只能合并自己上传的图片");
+        }
+        // 3. 调用python服务
+        MergeImageResponse mergeImageResponse = pythonImageService.merge(mergeImageRequest);
+        // 新增调用记录
+        //Long userId = jwtUtil.getUserId(jwtUtil.parseToken(authorization));
+        //recordService.mergeSave(userId, mergeImageRequest, mergeImageResponse);
+        return mergeImageResponse;
     }
 
     private String getFileExtension(String originalFileName, String contentType) {

@@ -1,9 +1,11 @@
 package com.edison.service.impl;
 
 import com.edison.dto.request.EditImageRequest;
+import com.edison.dto.request.MergeImageRequest;
 import com.edison.dto.request.PythonUploadImageRequest;
 import com.edison.dto.request.SearchImageRequest;
 import com.edison.dto.response.EditImageResponse;
+import com.edison.dto.response.MergeImageResponse;
 import com.edison.dto.response.PythonUploadImageResponse;
 import com.edison.dto.response.SearchImageResponse;
 import com.edison.service.PythonImageService;
@@ -231,6 +233,61 @@ public class PythonImageServiceImpl implements PythonImageService {
                 Files.deleteIfExists(editTemp);
             } catch (IOException e) {
                 log.error("删除临时文件失败");
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    @Override
+    public MergeImageResponse merge(MergeImageRequest mergeImageRequest) {
+        // 1. 文件转换   oss url   -> file 资源
+        String source1ImageUrl = mergeImageRequest.getImage1();
+        String source2ImageUrl = mergeImageRequest.getImage2();
+        String instruction = mergeImageRequest.getInstruction();
+        Path source1Temp = downloadToTempFile(source1ImageUrl);
+        Path source2Temp = downloadToTempFile(source2ImageUrl);
+        Path mergeTemp = null;
+        // 2. 构造请求参数去访问python服务的合并图片接口
+        String url = pythonBaseUrl + "/api/skill/image";
+        HttpHeaders httpHeaders = new HttpHeaders();
+        httpHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file1", new FileSystemResource(source1Temp.toFile()));
+        body.add("file2", new FileSystemResource(source2Temp.toFile()));
+        body.add("instruction", instruction);
+
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, httpHeaders);
+        RestTemplate restTemplate = new RestTemplate();
+
+        // 3. 拿到python服务返回的响应
+        ResponseEntity<String> response = restTemplate.postForEntity(url, requestEntity, String.class);
+        try {
+            JsonNode result = objectMapper.readTree(response.getBody());
+            String pythonUrl = result.path("url").asText("");
+            // 4. 拿到的图片进行二次保存到oss
+            mergeTemp = downloadToTempFile(pythonUrl);
+            String contentType = Files.probeContentType(mergeTemp);
+            String extension = ".png";
+            String objectKey = "image/merged/" + UUID.randomUUID().toString().replace("-", "") + extension;
+            String saveUrl = ossService.upload(objectKey, mergeTemp.toFile(), contentType);
+            // 5. 封装一个返回的对象
+            MergeImageResponse mergeImageResponse = new MergeImageResponse();
+            mergeImageResponse.setUrl(pythonUrl);
+            mergeImageResponse.setSaveUrl(saveUrl);
+            return mergeImageResponse;
+
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 6. 删掉临时文件
+            try {
+                Files.deleteIfExists(source1Temp);
+                Files.deleteIfExists(source2Temp);
+                Files.deleteIfExists(mergeTemp);
+            } catch (IOException e) {
                 throw new RuntimeException(e);
             }
         }

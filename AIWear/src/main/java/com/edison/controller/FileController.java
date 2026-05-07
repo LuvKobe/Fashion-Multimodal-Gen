@@ -2,8 +2,10 @@ package com.edison.controller;
 
 import com.edison.common.Result;
 import com.edison.dto.request.EditImageRequest;
+import com.edison.dto.request.MergeImageRequest;
 import com.edison.dto.request.SearchImageRequest;
 import com.edison.dto.response.EditImageResponse;
+import com.edison.dto.response.MergeImageResponse;
 import com.edison.dto.response.SearchImageResponse;
 import com.edison.dto.response.UploadImageResponse;
 import com.edison.entity.ImageFile;
@@ -69,5 +71,15 @@ public class FileController {
             @RequestHeader(value = "Authorization") String authorization
     ) {
         return Result.success("编辑成功", fileService.edit(authorization, editImageRequest));
+    }
+
+    // 图片合并
+    @ApiLog
+    @PostMapping("/merge")
+    public Result<MergeImageResponse> merge(
+            @RequestBody @Validated MergeImageRequest mergeImageRequest,
+            @RequestHeader(value = "Authorization") String authorization
+    ) {
+        return Result.success("合并成功", fileService.merge(authorization, mergeImageRequest));
     }
 }
