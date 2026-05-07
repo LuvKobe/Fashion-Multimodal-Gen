@@ -1,6 +1,8 @@
 package com.edison.service;
 
+import com.edison.dto.request.EditImageRequest;
 import com.edison.dto.request.SearchImageRequest;
+import com.edison.dto.response.EditImageResponse;
 import com.edison.dto.response.SearchImageResponse;
 import com.edison.dto.response.UploadImageResponse;
 import com.edison.entity.ImageFile;
@@ -19,4 +21,7 @@ public interface FileService {
 
     // 搜索当前用户上传的图片
     List<SearchImageResponse> search(String authorization, SearchImageRequest searchImageRequest);
+
+    // 编辑用户上传的图片
+    EditImageResponse edit(String authorization, EditImageRequest editImageRequest);
 }

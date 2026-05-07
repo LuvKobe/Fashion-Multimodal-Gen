@@ -1,11 +1,14 @@
 package com.edison.service.impl;
 
+import com.edison.dto.request.EditImageRequest;
 import com.edison.dto.request.PythonUploadImageRequest;
 import com.edison.dto.request.SearchImageRequest;
+import com.edison.dto.response.EditImageResponse;
 import com.edison.dto.response.PythonUploadImageResponse;
 import com.edison.dto.response.SearchImageResponse;
 import com.edison.service.PythonImageService;
 import com.edison.util.OssService;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -23,15 +26,21 @@ import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URI;
+import java.net.URL;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -171,6 +180,72 @@ public class PythonImageServiceImpl implements PythonImageService {
         } catch (Exception e) {
             log.error("调用python服务的搜索图片接口失败{}", e.getMessage());
             return List.of();
+        }
+    }
+
+    @Override
+    public EditImageResponse edit(EditImageRequest editImageRequest) {
+        // 1. 考虑转换  oss url -> file资源
+        String sourceImageUrl = editImageRequest.getImage();
+        String instruction = editImageRequest.getInstruction();
+        Path sourceTemp = null;
+        Path editTemp = null;
+
+        sourceTemp = downloadToTempFile(sourceImageUrl);
+        // 2. 构造请求参数去访问python服务的编辑图片接口
+        String url = pythonBaseUrl + "/api/skill/image";
+        HttpHeaders httpHeaders = new HttpHeaders();
+        httpHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
+
+        MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+        body.add("file", new FileSystemResource(sourceTemp.toFile()));
+        body.add("instruction", instruction);
+
+        HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, httpHeaders);
+        RestTemplate restTemplate = new RestTemplate();
+
+        // 3. 拿到python服务返回的响应之后需要处理数据
+        ResponseEntity<String> response = restTemplate.postForEntity(url, requestEntity, String.class);
+        try {
+            JsonNode result = objectMapper.readTree(response.getBody());
+            String pythonUrl = result.path("url").asText("");
+            // 4. 图片地址需要二次保存
+            editTemp = downloadToTempFile(pythonUrl);
+            String contentType = Files.probeContentType(editTemp);
+            String extension = ".png";
+            String objectKey = "image/edited/" + UUID.randomUUID().toString().replace("-", "") + extension;
+            String saveUrl = ossService.upload(objectKey, editTemp.toFile(), contentType);
+            // 5. 封装一个返回对象
+            EditImageResponse editImageResponse = new EditImageResponse();
+            editImageResponse.setUrl(pythonUrl);
+            editImageResponse.setSaveUrl(saveUrl);
+            return editImageResponse;
+        } catch (JsonProcessingException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 6. 处理无论成功与否，都应该删掉临时
+            try {
+                Files.deleteIfExists(sourceTemp);
+                Files.deleteIfExists(editTemp);
+            } catch (IOException e) {
+                log.error("删除临时文件失败");
+                throw new RuntimeException(e);
+            }
+        }
+    }
+
+    // 下载远程地址的url文件
+    private Path downloadToTempFile(String fileUrl) {
+        try {
+            URL url = URI.create(fileUrl).toURL();
+            Path tempFile = Files.createTempFile("image-edit-", ".tmp");
+            InputStream inputStream = url.openStream();
+            Files.copy(inputStream, tempFile, StandardCopyOption.REPLACE_EXISTING);
+            return tempFile;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
         }
     }
 }

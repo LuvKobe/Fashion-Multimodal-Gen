@@ -1,7 +1,9 @@
 package com.edison.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.edison.dto.request.EditImageRequest;
 import com.edison.dto.request.SearchImageRequest;
+import com.edison.dto.response.EditImageResponse;
 import com.edison.dto.response.SearchImageResponse;
 import com.edison.dto.response.UploadImageResponse;
 import com.edison.entity.ImageFile;
@@ -151,6 +153,24 @@ public class FileServiceImpl implements FileService {
         }
         // 3. 拿到数据，进行封装
         return searchImageResponseList;
+    }
+
+    @Override
+    public EditImageResponse edit(String authorization, EditImageRequest editImageRequest) {
+        // 1. 鉴权 -> 用户只能编辑自己上传的图片
+        List<ImageFile> imageFiles = myImages(authorization);
+        // 2. 判断当前图片地址是否包含在imageFiles的ossUrl字段集合中
+        List<String> urls = imageFiles.stream().map(ImageFile::getOssUrl).toList();
+        if (!urls.contains(editImageRequest.getImage())) {
+            throw new RuntimeException("只能编辑自己上传的图片");
+        }
+        // 3. 调用python服务，封装最后的返回结果
+        EditImageResponse editImageResponse = pythonImageService.edit(editImageRequest);
+
+        // 新增调用记录
+        //Long userId = jwtUtil.getUserId(jwtUtil.parseToken(authorization));
+        //recordService.editSave(userId, editImageRequest, editImageResponse);
+        return editImageResponse;
     }
 
     private String getFileExtension(String originalFileName, String contentType) {

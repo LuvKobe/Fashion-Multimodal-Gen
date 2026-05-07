@@ -1,6 +1,8 @@
 package com.edison.service;
 
+import com.edison.dto.request.EditImageRequest;
 import com.edison.dto.request.SearchImageRequest;
+import com.edison.dto.response.EditImageResponse;
 import com.edison.dto.response.SearchImageResponse;
 
 import java.nio.file.Path;
@@ -17,4 +19,7 @@ public interface PythonImageService {
 
     // 搜索图片
     List<SearchImageResponse> search(Long userId, SearchImageRequest searchImageRequest);
+
+    // 编辑图片
+    EditImageResponse edit(EditImageRequest editImageRequest);
 }
