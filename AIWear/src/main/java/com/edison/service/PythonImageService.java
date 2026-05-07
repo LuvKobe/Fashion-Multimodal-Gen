@@ -1,6 +1,10 @@
 package com.edison.service;
 
+import com.edison.dto.request.SearchImageRequest;
+import com.edison.dto.response.SearchImageResponse;
+
 import java.nio.file.Path;
+import java.util.List;
 
 // Python 图片向量化服务（后续可能会复用在搜索等功能）
 public interface PythonImageService {
@@ -10,4 +14,7 @@ public interface PythonImageService {
 
     // 审核图片 （上传之前先添加审核）
     boolean validateImage(Path filePath);
+
+    // 搜索图片
+    List<SearchImageResponse> search(Long userId, SearchImageRequest searchImageRequest);
 }

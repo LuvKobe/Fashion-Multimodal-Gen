@@ -1,6 +1,8 @@
 package com.edison.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.edison.dto.request.SearchImageRequest;
+import com.edison.dto.response.SearchImageResponse;
 import com.edison.dto.response.UploadImageResponse;
 import com.edison.entity.ImageFile;
 import com.edison.mapper.ImageFileMapper;
@@ -19,9 +21,7 @@ import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.List;
-import java.util.Locale;
-import java.util.UUID;
+import java.util.*;
 
 // 文件上传实现类
 @Slf4j
@@ -132,6 +132,25 @@ public class FileServiceImpl implements FileService {
         LambdaQueryWrapper<ImageFile> queryWrapper = new LambdaQueryWrapper<>();
         queryWrapper.eq(ImageFile::getUserId, userId).orderByDesc(ImageFile::getId);
         return imageFileMapper.selectList(queryWrapper);
+    }
+
+    @Override
+    public List<SearchImageResponse> search(String authorization, SearchImageRequest searchImageRequest) {
+        // 1. 先去获取用户id
+        String token = jwtUtil.parseToken(authorization);
+        Long userId = jwtUtil.getUserId(token);
+        List<ImageFile> imageFiles = myImages(authorization);
+        Map<String, String> map = new HashMap<>();
+        for (ImageFile imageFile : imageFiles) {
+            map.put(imageFile.getOssUrl(), imageFile.getFileName());
+        }
+        // 2. 调用python服务
+        List<SearchImageResponse> searchImageResponseList = pythonImageService.search(userId, searchImageRequest);
+        for (SearchImageResponse searchImageResponse : searchImageResponseList) {
+            searchImageResponse.setFileName(map.get(searchImageResponse.getFilePath()));
+        }
+        // 3. 拿到数据，进行封装
+        return searchImageResponseList;
     }
 
     private String getFileExtension(String originalFileName, String contentType) {

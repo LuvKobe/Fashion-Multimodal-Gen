@@ -1,5 +1,7 @@
 package com.edison.service;
 
+import com.edison.dto.request.SearchImageRequest;
+import com.edison.dto.response.SearchImageResponse;
 import com.edison.dto.response.UploadImageResponse;
 import com.edison.entity.ImageFile;
 import org.springframework.web.multipart.MultipartFile;
@@ -14,4 +16,7 @@ public interface FileService {
 
     // 查询当前用户上传的图片列表
     List<ImageFile> myImages(String authorization);
+
+    // 搜索当前用户上传的图片
+    List<SearchImageResponse> search(String authorization, SearchImageRequest searchImageRequest);
 }

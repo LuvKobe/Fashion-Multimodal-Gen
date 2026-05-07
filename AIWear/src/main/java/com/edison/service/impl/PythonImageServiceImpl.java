@@ -1,13 +1,17 @@
 package com.edison.service.impl;
 
 import com.edison.dto.request.PythonUploadImageRequest;
+import com.edison.dto.request.SearchImageRequest;
 import com.edison.dto.response.PythonUploadImageResponse;
+import com.edison.dto.response.SearchImageResponse;
 import com.edison.service.PythonImageService;
 import com.edison.util.OssService;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.FileSystemResource;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.MediaType;
@@ -17,6 +21,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -25,6 +30,8 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 
 @Slf4j
 @Service
@@ -118,6 +125,52 @@ public class PythonImageServiceImpl implements PythonImageService {
             return objectMapper.readTree(response.getBody()).path("allow").asBoolean(false);
         } catch (Exception e) {
             return false;
+        }
+    }
+
+    @Override
+    public List<SearchImageResponse> search(Long userId, SearchImageRequest searchImageRequest) {
+        String url = pythonBaseUrl + "/api/search-image";
+        String query = searchImageRequest.getQuery();
+        MultipartFile file = searchImageRequest.getFile();
+
+        HttpHeaders httpHeaders = new HttpHeaders();
+        httpHeaders.setContentType(MediaType.MULTIPART_FORM_DATA);
+        try {
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            body.add("userId", userId);
+            if (query != null && !query.isBlank()) {
+                body.add("query", query);
+            }
+
+            if (file != null) {
+                byte[] fileBytes = file.getBytes();
+                String filename = file.getOriginalFilename();
+                ByteArrayResource fileResource = new ByteArrayResource(fileBytes) {
+                    @Override
+                    public String getFilename() {
+                        return filename;
+                    }
+                };
+                body.add("file", fileResource);
+            }
+
+            HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, httpHeaders);
+            RestTemplate restTemplate = new RestTemplate();
+            ResponseEntity<String> response = restTemplate.postForEntity(url, requestEntity, String.class);
+            JsonNode result = objectMapper.readTree(response.getBody())
+                    .path("data");
+            List<SearchImageResponse> searchImageResponseList = new ArrayList<>();
+            for (JsonNode node : result) {
+                SearchImageResponse searchImageResponse = new SearchImageResponse();
+                searchImageResponse.setFilePath(node.path("filePath").asText(""));
+                searchImageResponseList.add(searchImageResponse);
+            }
+            return searchImageResponseList;
+
+        } catch (Exception e) {
+            log.error("调用python服务的搜索图片接口失败{}", e.getMessage());
+            return List.of();
         }
     }
 }
