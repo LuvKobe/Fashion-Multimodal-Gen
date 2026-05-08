@@ -12,6 +12,7 @@ import com.edison.entity.ImageFile;
 import com.edison.mapper.ImageFileMapper;
 import com.edison.service.FileService;
 import com.edison.service.PythonImageService;
+import com.edison.service.RecordService;
 import com.edison.util.JwtUtil;
 import com.edison.util.OssService;
 import lombok.extern.slf4j.Slf4j;
@@ -46,6 +47,9 @@ public class FileServiceImpl implements FileService {
 
     @Autowired
     private JwtUtil jwtUtil;
+
+    @Autowired
+    private RecordService recordService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -170,8 +174,8 @@ public class FileServiceImpl implements FileService {
         EditImageResponse editImageResponse = pythonImageService.edit(editImageRequest);
 
         // 新增调用记录
-        //Long userId = jwtUtil.getUserId(jwtUtil.parseToken(authorization));
-        //recordService.editSave(userId, editImageRequest, editImageResponse);
+        Long userId = jwtUtil.getUserId(jwtUtil.parseToken(authorization));
+        recordService.editSave(userId, editImageRequest, editImageResponse);
         return editImageResponse;
     }
 
@@ -187,8 +191,8 @@ public class FileServiceImpl implements FileService {
         // 3. 调用python服务
         MergeImageResponse mergeImageResponse = pythonImageService.merge(mergeImageRequest);
         // 新增调用记录
-        //Long userId = jwtUtil.getUserId(jwtUtil.parseToken(authorization));
-        //recordService.mergeSave(userId, mergeImageRequest, mergeImageResponse);
+        Long userId = jwtUtil.getUserId(jwtUtil.parseToken(authorization));
+        recordService.mergeSave(userId, mergeImageRequest, mergeImageResponse);
         return mergeImageResponse;
     }
 
