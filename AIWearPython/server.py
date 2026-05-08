@@ -153,7 +153,6 @@ def validate_image(image_desc : str) -> bool:
 def clip_image_to_512d(image_data: bytes) -> list:
     """
     把上传图片转成 CLIP 512 维向量（float 列表）。
-
     归一化后的向量更适合做余弦相似度检索。
     """
     model, processor = get_clip_model_and_processor()
@@ -674,5 +673,3 @@ def skill_image_api():
 if __name__ == "__main__":
     print("AI服务启动成功！")
     app.run(debug=True, host="0.0.0.0", port=5000)
-
-
