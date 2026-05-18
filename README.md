@@ -6,6 +6,23 @@
 *LangChain-based Multimodal Fashion Generation & Editing Platform*
 
 
+## 📂 仓库目录结构 (Repository Structure)
+
+在开始部署前，请确保你的本地仓库或上传到服务器的目录包含以下关键文件：
+```
+Fashion-Multimodal-Gen/
+├── AIWear/                      # Java 后端服务代码
+├── AIWearPython/                # Python 算法服务代码
+├── deploy/                      # 中间件代码
+├── frontend/                    # 前端代码
+├── Package/                     # 组件及模型压缩包目录
+│   ├── deploy.tar.gz            # 中间件及前端环境压缩包
+│   ├── AIWear-1.0-SNAPSHOT.jar  # Java 后端服务 Jar 包
+│   ├── AIWearPython.tar.gz      # Python 算法服务源码包
+│   └── clip-vit-base-patch16.tar.gz # CLIP 本地模型包
+└── README.md
+```
+
 ## 🛠️ 环境要求 (Environment)
 
 在开始部署之前，请确保您的服务器满足以下环境要求：
